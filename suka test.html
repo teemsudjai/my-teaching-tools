@@ -945,6 +945,12 @@
             const [aiSummary, setAiSummary] = useState('');
             const [isAiSummaryLoading, setIsAiSummaryLoading] = useState(false);
 
+            const formatTime = (seconds) => {
+                const mins = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+            };
+
             const fetchStats = useCallback(() => {
                 if (!GOOGLE_SCRIPT_URL) return;
 
@@ -1021,12 +1027,6 @@
                 setFeedback(null);
                 if (currentQIndex < questions.length - 1) { setCurrentQIndex(prev => prev + 1); setIsTimerRunning(true); } else { setScreen('result'); setIsTimerRunning(false); }
             };
-            
-            const formatTime = (seconds) => {
-                const mins = Math.floor(seconds / 60);
-                const secs = seconds % 60;
-                return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-            };
 
             // ---- RENDERERS ----
 
@@ -1035,7 +1035,7 @@
             if (screen === 'home') {
                 return (
                     <div className="min-h-[100dvh] bg-slate-900 flex flex-col items-center justify-center p-4 font-heading text-slate-700">
-                        <div className="bg-white p-6 md:p-8 rounded-[3rem] soft-shadow max-w-2xl w-full text-center border-4 border-white">
+                        <div className="bg-white/80 backdrop-blur-sm p-6 md:p-8 rounded-[3rem] soft-shadow max-w-2xl w-full text-center border-4 border-white">
                             <div className="relative group mx-auto mb-6 w-24 h-24 md:w-32 md:h-32">
                                 <img src={LOGO_URL} alt="Logo" onClick={() => setShowFullImage(true)} className="w-full h-full object-cover rounded-3xl border-4 border-white shadow-lg cursor-pointer hover:scale-105 transition-transform" onError={(e) => { e.target.style.display = 'none'; }} />
                                 <div className="absolute bottom-0 right-0 bg-white rounded-full p-1 shadow-md pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">🔍</div>
@@ -1091,14 +1091,14 @@
                         <h2 className="text-3xl md:text-4xl font-bold text-green-700 mb-10 drop-shadow-sm text-center">เลือกตัวละครของคุณ</h2>
                         
                         {/* Modified Container for 2 per row, center aligned */}
-                        <div className="flex flex-wrap justify-center gap-6 max-w-3xl w-full">
+                        <div className="flex flex-wrap justify-center gap-4 max-w-2xl w-full">
                             {PLAYERS.map((player, index) => (
-                                <div key={index} className="w-full sm:w-[calc(50%-12px)] md:w-64 flex justify-center">
-                                    <button onClick={() => handlePlayerSelect(player)} className={`bg-white p-6 rounded-[2.5rem] w-full h-full soft-shadow card-hover border-4 flex flex-col items-center gap-4 group touch-manipulation border-${player.theme}-200`}>
-                                        <div className={`w-24 h-24 md:w-32 md:h-32 rounded-full flex items-center justify-center text-5xl md:text-6xl shadow-inner group-hover:scale-110 transition-transform overflow-hidden bg-${player.theme}-100`}>
+                                <div key={index} className="w-[calc(50%-8px)] sm:w-[calc(50%-12px)] md:w-64 flex justify-center">
+                                    <button onClick={() => handlePlayerSelect(player)} className={`bg-white p-4 md:p-6 rounded-[2rem] w-full h-full soft-shadow card-hover border-4 flex flex-col items-center gap-3 group touch-manipulation border-${player.theme}-200`}>
+                                        <div className={`w-20 h-20 md:w-28 md:h-28 rounded-full flex items-center justify-center text-4xl md:text-5xl shadow-inner group-hover:scale-110 transition-transform overflow-hidden bg-${player.theme}-100`}>
                                             {player.avatar.startsWith('http') ? <img src={player.avatar} alt={player.name} className="w-full h-full object-cover" /> : player.avatar}
                                         </div>
-                                        <div className={`text-2xl font-bold text-${player.theme}-600`}>{player.name}</div>
+                                        <div className={`text-xl md:text-2xl font-bold text-${player.theme}-600`}>{player.name}</div>
                                     </button>
                                 </div>
                             ))}
