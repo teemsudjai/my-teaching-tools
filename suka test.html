@@ -922,6 +922,40 @@
             );
         };
 
+        const ModeSelectScreen = ({ onSelectMode, onBack }) => {
+            return (
+                <div className="min-h-[100dvh] bg-gradient-to-br from-indigo-100 to-purple-200 flex flex-col items-center justify-center p-6 font-heading">
+                    <div className="bg-white rounded-[3rem] p-8 max-w-md w-full text-center soft-shadow relative overflow-hidden animate-in zoom-in duration-300">
+                        <h2 className="text-3xl font-bold text-slate-700 mb-6">เลือกโหมดการเล่น</h2>
+                        
+                        <div className="flex flex-col gap-4">
+                            <button 
+                                onClick={() => onSelectMode('normal')}
+                                className="group relative bg-sky-100 hover:bg-sky-200 border-2 border-sky-300 text-sky-700 p-6 rounded-2xl transition-all active:scale-95 flex flex-col items-center gap-2"
+                            >
+                                <span className="text-2xl">📝</span>
+                                <span className="text-xl font-bold">โหมดปกติ (30 ข้อ)</span>
+                                <span className="text-sm text-slate-500 font-body">ทำครบ 30 ข้อแล้วบันทึกคะแนน</span>
+                            </button>
+
+                            <button 
+                                onClick={() => onSelectMode('marathon')}
+                                className="group relative bg-orange-100 hover:bg-orange-200 border-2 border-orange-300 text-orange-700 p-6 rounded-2xl transition-all active:scale-95 flex flex-col items-center gap-2"
+                            >
+                                <span className="text-2xl">🔥</span>
+                                <span className="text-xl font-bold">โหมดมาราธอน</span>
+                                <span className="text-sm text-slate-500 font-body">เล่นได้เรื่อยๆ จนกว่าจะพอใจ</span>
+                            </button>
+                        </div>
+
+                        <button onClick={onBack} className="mt-8 text-slate-400 font-bold hover:text-slate-600 transition-colors">
+                            ⬅️ ย้อนกลับ
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
         function App() {
             const [screen, setScreen] = useState('home');
             const [selectedPlayer, setSelectedPlayer] = useState(null);
@@ -938,6 +972,7 @@
             const [statsError, setStatsError] = useState(false);
             const [savingStatus, setSavingStatus] = useState('');
             const [showFullImage, setShowFullImage] = useState(false);
+            const [gameMode, setGameMode] = useState('normal'); // 'normal' or 'marathon'
             
             // AI State
             const [aiExplanation, setAiExplanation] = useState('');
@@ -979,15 +1014,28 @@
 
             useEffect(() => { if (screen === 'home') fetchStats(); }, [screen, fetchStats]);
 
-            useEffect(() => {
-                if (screen === 'result' && GOOGLE_SCRIPT_URL && selectedPlayer) {
+            const saveScore = useCallback(() => {
+                if (GOOGLE_SCRIPT_URL && selectedPlayer) {
                     setSavingStatus('saving');
-                    const payload = { player: selectedPlayer.name, score: score, timeUsed: timer };
+                    const payload = { player: selectedPlayer.name, score: score, timeUsed: timer, mode: gameMode }; // Added mode to payload just in case, though script might ignore it
                     fetch(GOOGLE_SCRIPT_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(payload) })
-                    .then(() => { setSavingStatus('saved'); })
+                    .then(() => { 
+                        setSavingStatus('saved');
+                        // For marathon mode, we might want to go home after saving
+                        if(gameMode === 'marathon') {
+                             // setTimeout(() => setScreen('home'), 1500); // Removed auto-redirect
+                        }
+                    })
                     .catch(err => { console.error("Error saving score:", err); setSavingStatus('error'); });
                 }
-            }, [screen]);
+            }, [score, timer, selectedPlayer, gameMode]);
+
+            useEffect(() => {
+                // Only auto-save on result screen for NORMAL mode
+                if (screen === 'result' && gameMode === 'normal') {
+                    saveScore();
+                }
+            }, [screen, gameMode, saveScore]);
 
             useEffect(() => {
                 let interval;
@@ -995,12 +1043,21 @@
                 return () => clearInterval(interval);
             }, [isTimerRunning, screen]);
 
-            const startGameSetup = () => {
+            const startGameSetup = (mode) => {
+                setGameMode(mode);
                 let shuffled = shuffleArray(QUESTION_POOL);
-                let selectedQuestions = shuffled.slice(0, 30);
-                while (selectedQuestions.length < 30) {
-                    selectedQuestions = [...selectedQuestions, ...shuffleArray(QUESTION_POOL)].slice(0, 30);
+                let selectedQuestions = [];
+
+                if (mode === 'normal') {
+                     selectedQuestions = shuffled.slice(0, 30);
+                     while (selectedQuestions.length < 30) {
+                        selectedQuestions = [...selectedQuestions, ...shuffleArray(QUESTION_POOL)].slice(0, 30);
+                    }
+                } else {
+                    // Marathon mode: Use full pool shuffled
+                    selectedQuestions = shuffled;
                 }
+               
                 setQuestions(selectedQuestions);
                 setCurrentQIndex(0);
                 setScore(0);
@@ -1011,8 +1068,10 @@
                 setAiSummary('');
             };
 
-            const handlePlayerSelect = (player) => { setSelectedPlayer(player); setScreen('preGame'); };
-            const startQuiz = () => { startGameSetup(); setScreen('game'); setIsTimerRunning(true); };
+            const handlePlayerSelect = (player) => { setSelectedPlayer(player); setScreen('modeSelect'); };
+            const handleModeSelect = (mode) => { startGameSetup(mode); setScreen('preGame'); };
+
+            const startQuiz = () => { setScreen('game'); setIsTimerRunning(true); };
             
             const handleAnswer = (choiceIndex) => {
                 setIsTimerRunning(false);
@@ -1025,12 +1084,36 @@
             
             const nextQuestion = () => {
                 setFeedback(null);
-                if (currentQIndex < questions.length - 1) { setCurrentQIndex(prev => prev + 1); setIsTimerRunning(true); } else { setScreen('result'); setIsTimerRunning(false); }
+                if (currentQIndex < questions.length - 1) { 
+                    setCurrentQIndex(prev => prev + 1); 
+                    setIsTimerRunning(true); 
+                } else { 
+                    // End of questions list
+                    if (gameMode === 'marathon') {
+                        // In marathon, loop back or shuffle again? Let's shuffle again to keep going
+                         const newShuffled = shuffleArray(QUESTION_POOL);
+                         setQuestions(prev => [...prev, ...newShuffled]);
+                         setCurrentQIndex(prev => prev + 1);
+                         setIsTimerRunning(true);
+                    } else {
+                        setScreen('result'); 
+                        setIsTimerRunning(false); 
+                    }
+                }
+            };
+
+            const handleFinishMarathon = () => {
+                setIsTimerRunning(false);
+                // Go to a 'saving' state or directly save then home
+                setScreen('result'); 
+                // Manual save trigger via useEffect logic (we need to trigger saveScore manually for marathon since useEffect is set for normal)
+                saveScore();
             };
 
             // ---- RENDERERS ----
 
             if (screen === 'history') return <HistoryScreen historyData={historyData} onBack={() => setScreen('home')} />;
+            if (screen === 'modeSelect') return <ModeSelectScreen onSelectMode={handleModeSelect} onBack={() => setScreen('playerSelect')} />;
 
             if (screen === 'home') {
                 return (
@@ -1130,6 +1213,20 @@
 
             if (screen === 'game') {
                 const currentQuestion = questions[currentQIndex];
+
+                // หน้าจอกำลังบันทึกสำหรับ Marathon Mode
+                if (gameMode === 'marathon' && savingStatus === 'saving') {
+                    return (
+                        <div className="min-h-[100dvh] bg-slate-100 font-body flex flex-col items-center justify-center">
+                            <div className="bg-white p-8 rounded-3xl shadow-lg text-center animate-pulse">
+                                <div className="text-6xl mb-4">💾</div>
+                                <h2 className="text-2xl font-bold text-slate-700">กำลังบันทึกคะแนน...</h2>
+                                <p className="text-slate-500">กรุณารอสักครู่ ระบบจะกลับสู่หน้าแรกอัตโนมัติ</p>
+                            </div>
+                        </div>
+                    );
+                }
+
                 return (
                     <div className="min-h-[100dvh] bg-slate-100 font-body flex flex-col">
                         <div className="bg-white p-3 md:p-4 shadow-sm flex items-center justify-between sticky top-0 z-20 px-4 md:px-8">
@@ -1138,8 +1235,13 @@
                                 <div className="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-3 py-1 md:px-4 md:py-2 rounded-full font-bold font-heading text-sm md:text-base"><span className="text-xl">⭐</span>{score} คะแนน</div>
                             </div>
                             <div className="flex items-center gap-4">
-                                <div className="hidden md:flex items-center gap-2 text-slate-600 font-heading"><span>ข้อที่ {currentQIndex + 1} / {questions.length}</span></div>
-                                <button onClick={() => { setIsTimerRunning(false); setShowExitModal(true); }} className="p-2 bg-red-100 text-red-500 rounded-full hover:bg-red-200 transition-colors touch-manipulation font-bold text-xl">❌</button>
+                                <div className="hidden md:flex items-center gap-2 text-slate-600 font-heading">
+                                    <span>{gameMode === 'normal' ? `ข้อที่ ${currentQIndex + 1} / ${questions.length}` : `ข้อที่ ${currentQIndex + 1}`}</span>
+                                </div>
+                                {/* Hide Close button in Marathon Mode */}
+                                {gameMode === 'normal' && (
+                                    <button onClick={() => { setIsTimerRunning(false); setShowExitModal(true); }} className="p-2 bg-red-100 text-red-500 rounded-full hover:bg-red-200 transition-colors touch-manipulation font-bold text-xl">❌</button>
+                                )}
                             </div>
                         </div>
                         <div className="flex-1 max-w-4xl w-full mx-auto p-4 md:p-8 flex flex-col gap-4 md:gap-6 overflow-y-auto pb-20">
@@ -1157,6 +1259,17 @@
                                     </button>
                                 ))}
                             </div>
+
+                            {/* Marathon Finish Button */}
+                            {gameMode === 'marathon' && (
+                                <button 
+                                    onClick={handleFinishMarathon}
+                                    className="mt-6 w-full bg-red-500 hover:bg-red-600 text-white font-bold py-4 rounded-2xl shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2 text-xl"
+                                >
+                                    💾 จบเกมและบันทึกคะแนน
+                                </button>
+                            )}
+
                         </div>
                         {showExitModal && (
                             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -1216,12 +1329,19 @@
                             <Confetti />
                             <div className="relative z-10">
                                 <div className="w-24 h-24 md:w-32 md:h-32 mx-auto bg-yellow-100 rounded-full flex items-center justify-center mb-6 shadow-inner text-6xl">🏆</div>
-                                <h2 className="text-3xl md:text-4xl font-bold text-slate-800 mb-2">จบเกมแล้ว!</h2>
-                                <p className="text-lg md:text-xl text-slate-500 mb-8">เก่งมากๆ เลย {selectedPlayer?.name}</p>
                                 
+                                <h2 className="text-2xl font-bold text-slate-700 mb-2">
+                                   ยินดีด้วย {selectedPlayer?.name} <br/> คุณได้คะแนนทั้งหมด
+                                </h2>
+
                                 <div className="bg-orange-50 rounded-3xl p-6 md:p-8 mb-6 border-2 border-orange-100">
                                     <p className="text-slate-500 mb-2">คะแนนรวมของคุณ</p>
-                                    <div className="text-5xl md:text-8xl font-bold text-orange-500 mb-2 tracking-tighter">{score} <span className="text-2xl md:text-3xl text-orange-300">/ 30</span></div>
+                                    <div className="text-5xl md:text-8xl font-bold text-orange-500 mb-2 tracking-tighter">
+                                        {gameMode === 'normal' 
+                                            ? <>{score} <span className="text-2xl md:text-3xl text-orange-300">/ 30</span></>
+                                            : <>{score} <span className="text-2xl md:text-3xl text-orange-300">คะแนน</span></>
+                                        }
+                                    </div>
                                     <p className="text-slate-400 font-body">ใช้เวลาไปทั้งหมด {formatTime(timer)} นาที</p>
                                 </div>
 
